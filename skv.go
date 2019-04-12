@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/gob"
 	"errors"
-	"github.com/boltdb/bolt"
+	"sync/atomic"
 	"time"
+
+	"github.com/boltdb/bolt"
 )
 
 type KeyValueStore struct {
@@ -15,8 +17,8 @@ type KeyValueStore struct {
 var (
 	ErrNotFound = errors.New("not found")
 	ErrBadValue = errors.New("bad value")
-	bucketName = []byte("defaultKV")
-	)
+	bucketName  = []byte("defaultKV")
+)
 
 func Open(path string) (*KeyValueStore, error) {
 	db, err := bolt.Open(path, 0640, &bolt.Options{Timeout: 1 * time.Second})
@@ -77,4 +79,24 @@ func (kvs *KeyValueStore) Delete(key string) error {
 			return c.Delete()
 		}
 	})
+}
+
+/*
+ * ugly? yes, inefficient? also yes
+ * but i only needed this hacky solution atm
+ * TODO: create elegant solution
+ */
+func (kvs *KeyValueStore) CountPairs() uint64 {
+	var ret uint64 = 0
+	kvs.db.View(func(tx *bolt.Tx) error {
+		// Assume bucket exists and has keys
+		b := tx.Bucket([]byte(bucketName))
+
+		b.ForEach(func(k, v []byte) error {
+			atomic.AddUint64(&ret, 1)
+			return nil
+		})
+		return nil
+	})
+	return atomic.LoadUint64(&ret)
 }
